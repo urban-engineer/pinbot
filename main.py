@@ -209,7 +209,6 @@ async def register_pin_channel(ctx: discord.ext.commands.context.Context, channe
 
         # Make sure the user the ran the command is the user that ran the first command.
         original_registering_user: discord.User = await BOT.fetch_user(pending_connection[3])
-        log.debug("{}: {}".format(pending_connection[3], type(pending_connection[3])))
         if original_registering_user.id != registering_user.id:
             log.warning(
                 "User [{}] ([{}]) tried registering key made by User [{}] ([{}])".format(
