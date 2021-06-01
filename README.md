@@ -8,5 +8,3 @@ To set it up yourself:
 * Clone the repo
 * Copy `secrets.json.example` to `secrets.json`, and put your bot token in there. 
 * Run with python (dev/tested on 3.8.8).
-
-Dockerfile to come eventually™
