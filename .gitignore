@@ -152,3 +152,4 @@ dmypy.json
 # Local adds
 config/secrets.json
 pinbot.db
+testing/

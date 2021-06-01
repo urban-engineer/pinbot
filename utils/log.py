@@ -5,6 +5,15 @@ import typing
 from utils import config
 
 
+# Here's how I see log messages:
+# DEBUG    - verbose information.  Stuff you'd use to track down unintended behavior.
+# INFO     - summary information.  Just lets you know roughly where you are in program execution.
+# WARNING  - unintended information.  Something is wrong, but we can recover from it.
+# ERROR    - A wittle fucko boingo.  Something is fundamentally wrong and we can't recover from it.
+# CRITICAL - I don't really use this, but theoretically, it's what ERROR is now.
+#            (And ERROR should be when something is fundamentally wrong, but we can continue, e.g. bad data in the DB)
+
+
 # Stack level 0 displays the information of the log message function
 # Stack level 1 displays the information of the log message function
 # Stack level 2 displays the information of the function that called the log message function
@@ -18,11 +27,7 @@ STACK_LEVEL_PREVIOUS_PREVIOUS = 4
 
 logging_config_file = config.get_config_directory().joinpath("logging.json")
 logging.config.dictConfig(json.loads(logging_config_file.read_text()))
-importer_logger = logging.getLogger("importer_logger")
-
-# I don't care for requests debug output, if I need that info it's because I'm passing bad info to the module.
-logging.getLogger("urllib3").setLevel(logging.INFO)
-logging.getLogger("chardet").setLevel(logging.INFO)
+importer_logger = logging.getLogger("pinbot_logger")
 
 
 def debug(message: typing.Any, stack_level: int = STACK_LEVEL_DEFAULT) -> None:
