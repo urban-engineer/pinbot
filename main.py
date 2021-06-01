@@ -51,7 +51,6 @@ async def on_reaction_add(reaction: discord.reaction.Reaction, user: discord.mem
     source_channel = post_to_pin.channel
     log.debug("Saw user [{}] react to [{}] in [{}]".format(user.display_name, post_to_pin.id, source_channel.id))
 
-
     # We don't care about reaction that aren't :pushpin:
     if str(reaction) == "📌":
         # We don't care about reactions sent in channels that aren't registered source channels
