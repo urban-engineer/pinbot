@@ -8,3 +8,7 @@ To set it up yourself:
 * Clone the repo
 * Copy `secrets.json.example` to `secrets.json`, and put your bot token in there. 
 * Run with python (dev/tested on 3.8.8).
+
+Or just build an image with the dockerfile.
+
+`docker build -t <you>/pinbot . && docker run -d --name PinBot -v /path/to/secrets.json:/pinbot/config/secrets.json -v /path/to/pinbot/pinbot.db:/pinbot/pinbot.db <you>/pinbot`
