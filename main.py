@@ -1,13 +1,18 @@
+import io
+
 import discord
 import discord.ext.commands
+import pathlib
 import sqlite3
 import uuid
+
+from PIL import Image
 
 from utils import config
 from utils import log
 
 
-BOT = discord.ext.commands.Bot(command_prefix='!')
+BOT = discord.ext.commands.Bot(command_prefix="!")
 DATABASE_CONNECTION = sqlite3.connect("pinbot.db")
 
 # TODO: Support pinning messages from a public channel to user DMs.
@@ -36,6 +41,34 @@ def delete_record(channel_connection_key: str) -> None:
             log.warning("Key [{}] does not exist in DB".format(channel_connection_key))
 
 
+async def _resize_attachment(attachment: discord.Attachment) -> pathlib.Path:
+    await attachment.save(attachment.filename)
+    local_file = pathlib.Path(attachment.filename)
+    final_file = pathlib.Path("reduce_{}".format(local_file.name))
+    final_file.write_bytes(local_file.read_bytes())
+
+    reduction_factor = 0.95
+
+    while final_file.stat().st_size > 8000000:
+        with Image.open(local_file.name) as image:
+            new_width = int(image.width * reduction_factor)
+            new_height = int(image.height * reduction_factor)
+
+            image.thumbnail((new_width, new_height), resample=Image.LANCZOS)
+            image.save("reduce_{}".format(local_file.name), quality=100)
+
+        reduction_factor -= 0.05
+        if reduction_factor < .8:
+            break
+
+    final_file = pathlib.Path("reduce_{}".format(local_file.name))
+    final_size = "{}MB".format(round(final_file.stat().st_size / 1000000, 2))
+    log.debug("Final file size: [{}] ({}x{})".format(final_size, new_width, new_height))
+    local_file.unlink()
+
+    return final_file
+
+
 @BOT.event
 async def on_reaction_add(reaction: discord.reaction.Reaction, user: discord.member.Member) -> None:
     """
@@ -49,7 +82,14 @@ async def on_reaction_add(reaction: discord.reaction.Reaction, user: discord.mem
     """
     post_to_pin = reaction.message
     source_channel = post_to_pin.channel
-    log.debug("Saw user [{}] react to [{}] in [{}]".format(user.display_name, post_to_pin.id, source_channel.id))
+    log.debug(
+        "User [{}] ({}) react to [{}] in [{}] ({}) in server [{}] ({})".format(
+            user.display_name, user.id,
+            post_to_pin.id,
+            source_channel.name, source_channel.id,
+            source_channel.guild.name, source_channel.guild.id
+        )
+    )
 
     # We don't care about reaction that aren't :pushpin:
     if str(reaction) == "📌":
@@ -80,22 +120,88 @@ async def on_reaction_add(reaction: discord.reaction.Reaction, user: discord.mem
             await user.send(message)
             return
 
-        # For every pin channel the source channel is connected to, post the attachments/embeds
-        # set/listing it to guarantee only unique places get posted to.
-        pin_channel_ids = list(set([x[2] for x in channel_connections]))
-        for channel_id in pin_channel_ids:
-            log.debug("Pinning [{}] to [{}]".format(post_to_pin.id, channel_id))
-            channel = await BOT.fetch_channel(channel_id)
+        for connection in channel_connections:
+            connection_key = connection[0]
+            pin_channel = connection[2]
+            channel = await BOT.fetch_channel(pin_channel)
+
+            pinned_message = False
+
             if len(post_to_pin.attachments) > 0:
-                files = []
+                attachments_to_pin = []
+
+                # Finding what attachments that haven't been pinned yet
                 for attachment in post_to_pin.attachments:
-                    files.append(await attachment.to_file())
-                await channel.send("Pinned by `{}`".format(user.display_name), files=files)
+                    pinned_lookup_command = "SELECT * FROM pinned_attachments WHERE attachment_id=? AND channel_key=?"
+                    attachment_pins = DATABASE_CONNECTION.execute(
+                        pinned_lookup_command, (attachment.id, connection_key)
+                    ).fetchall()
+
+                    log.debug(attachment_pins)
+                    if attachment_pins:
+                        log.debug("Attachment [{}] already pinned".format(attachment.id))
+                        continue
+                    else:
+                        attachments_to_pin.append(attachment)
+
+                # Preparing attachments to be pinned
+                files = []
+                for attachment in attachments_to_pin:
+                    if attachment.size > 8000000:
+                        attachment_size_string = "{}MB".format(round(attachment.size / 1000000, 2))
+                        log.warning(
+                            "Attachment [{}] is over max size of 8MB ({}); resizing for upload".format(
+                                attachment.id, attachment_size_string
+                            )
+                        )
+
+                        # TODO: warning that this was resized
+                        resized_file = await _resize_attachment(attachment)
+                        files.append(discord.File(resized_file.name))
+                    else:
+                        files.append(await attachment.to_file())
+
+                # Pinning attachments that need to be pinned
+                if files:
+                    await channel.send(
+                        "Pinned by `{}`\nOriginal Message: {}".format(user.display_name, post_to_pin.jump_url),
+                        files=files
+                    )
+
+                    # Closing file handles and deleting temp files
+                    for file in files:
+                        filename = file.filename
+                        file = None
+                        pathlib.Path(filename).unlink(missing_ok=True)
+                    pinned_message = True
+
+                # Logging that we pinned attachments
+                for attachment in attachments_to_pin:
+                    with DATABASE_CONNECTION:
+                        db_entry_command = """INSERT INTO pinned_attachments(attachment_id,channel_key) VALUES(?,?)"""
+                        DATABASE_CONNECTION.execute(db_entry_command, (int(attachment.id), connection_key))
+
             elif len(post_to_pin.embeds) > 0:
                 for embed in post_to_pin.embeds:
-                    # TODO: if it's a tweet, check how many images there are, so mobile users know.
-                    await channel.send("Pinned by `{}`".format(user.display_name), embed=embed)
-            log.debug("Pinned [{}] to [{}]".format(post_to_pin.id, channel_id))
+                    embed_lookup_command = "SELECT * FROM pinned_embeds WHERE embed_url=? AND channel_key=?"
+                    embed_pins = DATABASE_CONNECTION.execute(
+                        embed_lookup_command, (post_to_pin.jump_url, connection_key)
+                    ).fetchall()
+
+                    if embed_pins:
+                        log.warning("Embed [{}] was already pinned".format(post_to_pin.jump_url))
+                    else:
+                        await channel.send(
+                            "Pinned by `{}`\nOriginal Message: {}".format(user.display_name, post_to_pin.jump_url),
+                            embed=embed
+                        )
+                        pinned_message = True
+                        with DATABASE_CONNECTION:
+                            db_entry_command = """INSERT INTO pinned_embeds(embed_url,channel_key) VALUES(?,?)"""
+                            DATABASE_CONNECTION.execute(db_entry_command, (post_to_pin.jump_url, connection_key))
+
+            if pinned_message:
+                log.debug("Pinned [{}] to [{}]".format(post_to_pin.id, pin_channel))
 
 
 @BOT.command()
@@ -287,6 +393,7 @@ async def register_pin_channel(ctx: discord.ext.commands.context.Context, channe
 if __name__ == '__main__':
     log.info("Starting PinBot.  Initializing database")
     with DATABASE_CONNECTION:
+        # Connections between Source and Pin channels
         table_creation_command = """
             CREATE TABLE IF NOT EXISTS channel_connections (
                 channel_key text UNIQUE,
@@ -294,6 +401,33 @@ if __name__ == '__main__':
                 pin_channel INTEGER,
                 registering_user INTEGER 
             )
+        """
+        DATABASE_CONNECTION.execute(table_creation_command)
+
+        # Log of attachments pinned from Source to Pin channels
+        table_creation_command = """
+            create table IF NOT EXISTS pinned_attachments
+            (
+                attachment_id int  not null,
+                channel_key   TEXT not null
+                    constraint pinned_attachments_channel_connections_channel_key_fk
+                        references channel_connections (channel_key)
+                        on delete cascade
+            );
+
+        """
+        DATABASE_CONNECTION.execute(table_creation_command)
+
+        # Log of embeds pinned from Source to Pin channels
+        table_creation_command = """
+            create table IF NOT EXISTS pinned_embeds
+            (
+                embed_url   TEXT not null,
+                channel_key TEXT not null
+                    constraint pinned_embeds_channel_connections_channel_key_fk
+                        references channel_connections (channel_key)
+                        on delete cascade
+            );
         """
         DATABASE_CONNECTION.execute(table_creation_command)
 

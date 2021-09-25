@@ -29,6 +29,10 @@ logging_config_file = config.get_config_directory().joinpath("logging.json")
 logging.config.dictConfig(json.loads(logging_config_file.read_text()))
 importer_logger = logging.getLogger("pinbot_logger")
 
+# I don't care for PIL debug output, if I need that info it's because I'm passing bad info to the module.
+pillow_logger = logging.getLogger("PIL")
+pillow_logger.setLevel(logging.INFO)
+
 
 def debug(message: typing.Any, stack_level: int = STACK_LEVEL_DEFAULT) -> None:
     importer_logger.debug(str(message), stacklevel=stack_level)
