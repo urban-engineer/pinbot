@@ -137,7 +137,6 @@ async def on_reaction_add(reaction: discord.reaction.Reaction, user: discord.mem
                         pinned_lookup_command, (attachment.id, connection_key)
                     ).fetchall()
 
-                    log.debug(attachment_pins)
                     if attachment_pins:
                         log.debug("Attachment [{}] already pinned".format(attachment.id))
                         continue
