@@ -48,7 +48,7 @@ async def _resize_attachment(attachment: discord.Attachment) -> pathlib.Path:
     final_file.write_bytes(local_file.read_bytes())
 
     reduction_factor = 0.95
-
+    file_size_megabytes = round(final_file.stat().st_size / 1000000, 2)
     while final_file.stat().st_size > 8000000:
         with Image.open(local_file.name) as image:
             new_width = int(image.width * reduction_factor)
@@ -57,14 +57,14 @@ async def _resize_attachment(attachment: discord.Attachment) -> pathlib.Path:
 
             image.thumbnail((new_width, new_height), resample=Image.LANCZOS)
             image.save("reduce_{}".format(local_file.name), quality=100)
-        log.warning("Reduction to [{}] resulted in file size [{}]".format(reduction_factor, final_file.stat().st_size))
+        file_size_megabytes = round(final_file.stat().st_size / 1000000, 2)
+        log.debug("Reduction to [{}] resulted in file size [{}]".format(reduction_factor, file_size_megabytes))
 
         reduction_factor -= 0.05
         # There was a resize limit of 80% here before, removed, dunno why.  guess we'll find out lol.
 
     final_file = pathlib.Path("reduce_{}".format(local_file.name))
-    final_size = "{}MB".format(round(final_file.stat().st_size / 1000000, 2))
-    log.debug("Final file size: [{}] ({}x{})".format(final_size, new_width, new_height))
+    log.debug("Final file size: [{}MB] ({}x{})".format(file_size_megabytes, new_width, new_height))
     local_file.unlink()
 
     return final_file
