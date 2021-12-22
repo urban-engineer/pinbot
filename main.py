@@ -58,8 +58,7 @@ async def _resize_attachment(attachment: discord.Attachment) -> pathlib.Path:
             image.save("reduce_{}".format(local_file.name), quality=100)
 
         reduction_factor -= 0.05
-        if reduction_factor < .8:
-            break
+        # There was a resize limit of 80% here before, removed, dunno why.  guess we'll find out lol.
 
     final_file = pathlib.Path("reduce_{}".format(local_file.name))
     final_size = "{}MB".format(round(final_file.stat().st_size / 1000000, 2))
