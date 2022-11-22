@@ -11,8 +11,10 @@ from PIL import Image
 from utils import config
 from utils import log
 
+intents = discord.Intents.default()
+intents.message_content = True
 
-BOT = discord.ext.commands.Bot(command_prefix="!")
+BOT = discord.ext.commands.Bot(command_prefix="!", intents=intents)
 DATABASE_CONNECTION = sqlite3.connect("pinbot.db")
 
 # TODO: Support pinning messages from a public channel to user DMs.
